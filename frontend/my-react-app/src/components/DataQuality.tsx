@@ -7,13 +7,7 @@ const DataQuality: React.FC = () => {
     const [startCell, setStartCell] = useState<string>('A1');
     const [endCell, setEndCell] = useState<string>('A1');
     const [columnChecks, setColumnChecks] = useState<{ [key: string]: boolean }>({});
-    const [dataQualityChecks, setDataQualityChecks] = useState<{
-        accuracy: boolean;
-        completeness: boolean;
-        reliability: boolean;
-        relevance: boolean;
-        timeliness: boolean;
-    }>({
+    const [dataQualityChecks, setDataQualityChecks] = useState<{ [key: string]: boolean }>({
         accuracy: false,
         completeness: false,
         reliability: false,
@@ -21,21 +15,20 @@ const DataQuality: React.FC = () => {
         timeliness: false,
     });
     const [fileData, setFileData] = useState<ArrayBuffer | string | null>(null);
+    const [file, setFile] = useState<File | null>(null);
+    const [results, setResults] = useState<{ [key: string]: { [key: string]: boolean } } | null>(null);
 
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         setError(null);
-        const file = e.target.files?.[0];
-        if (!file) return;
-
+        const uploadedFile = e.target.files?.[0];
+        if (!uploadedFile) return;
+        setFile(uploadedFile);
         const reader = new FileReader();
-        reader.onload = (evt) => {
-            setFileData(evt.target?.result || null);
-        };
-        reader.readAsBinaryString(file);
+        reader.onload = (evt) => setFileData(evt.target?.result || null);
+        reader.readAsBinaryString(uploadedFile);
     };
 
     const handleGetColumns = () => {
-        setError(null);
         if (!fileData) {
             setError('Please upload an Excel file first.');
             return;
@@ -55,68 +48,47 @@ const DataQuality: React.FC = () => {
                 headers.push(cell ? String(cell.v) : '');
             }
 
-            if (headers.length > 0 && headers.some(h => h)) {
+            if (headers.length && headers.some(h => h)) {
                 setColumns(headers);
-                setColumnChecks(
-                    headers.reduce((acc: { [key: string]: boolean }, col: string) => {
-                        acc[col] = false;
-                        return acc;
-                    }, {})
-                );
+                setColumnChecks(headers.reduce((acc, col) => ({ ...acc, [col]: false }), {}));
             } else {
                 setColumns([]);
-                setError('No columns found in the specified cell range.');
+                setError('No columns found.');
             }
-        } catch (err) {
+        } catch {
             setError('Failed to parse Excel file.');
         }
     };
 
-    const handleColumnCheckChange = (column: string) => {
-        setColumnChecks((prev) => ({
-            ...prev,
-            [column]: !prev[column],
-        }));
-    };
-
-    const handleDataQualityCheckChange = (check: string) => {
-        setDataQualityChecks((prev) => ({
-            ...prev,
-            [check]: !prev[check as keyof typeof prev],
-        }));
-    };
-
-    // Example: Send selected columns and checks to backend
     const handleRunChecks = () => {
+        if (!file) {
+            setError('Please upload an Excel file first.');
+            return;
+        }
         const selectedColumns = Object.keys(columnChecks).filter(col => columnChecks[col]);
-        const selectedChecks = (Object.keys(dataQualityChecks) as Array<keyof typeof dataQualityChecks>)
-          .filter(check => dataQualityChecks[check]);
-        const columnCheckMap: { [key: string]: string[] } = {};
-        selectedColumns.forEach(col => {
-            columnCheckMap[col] = selectedChecks;
-        });
+        const selectedChecks = Object.keys(dataQualityChecks).filter(check => dataQualityChecks[check]);
+        if (!selectedColumns.length || !selectedChecks.length) {
+            setError('Select at least one column and one check.');
+            return;
+        }
 
-        // Example fetch (adjust URL and payload as needed)
-        fetch('http://127.0.0.1:5000/api/run_quality_checks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(columnCheckMap)
-        })
-        .then(res => res.json())
-        .then(data => {
-            // handle results
-            console.log(data);
-        })
-        .catch(err => {
-            setError('Failed to run checks.');
-        });
+        const formData = new FormData();
+        formData.append('file', file);
+        const checksMap: { [key: string]: string[] } = {};
+        selectedColumns.forEach(col => checksMap[col] = selectedChecks);
+        formData.append('checks', JSON.stringify(checksMap));
+
+        fetch('http://localhost:5000/api/run_quality_checks', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => { setResults(data); setError(null); })
+            .catch(() => setError('Failed to run checks.'));
     };
 
     return (
         <div className="dq-container">
             <style>{`
                 .dq-container {
-                    max-width: 500px;
+                    max-width: 700px;
                     margin: 40px auto;
                     background: #fff;
                     border-radius: 16px;
@@ -144,7 +116,7 @@ const DataQuality: React.FC = () => {
                     margin-bottom: 16px;
                     align-items: center;
                 }
-                input[type="text"], input[type="number"] {
+                input[type="text"] {
                     border: 1px solid #cbd5e0;
                     border-radius: 6px;
                     padding: 6px 10px;
@@ -192,29 +164,34 @@ const DataQuality: React.FC = () => {
                     align-items: center;
                     gap: 8px;
                 }
+                table {
+                    width: 100%;
+                    border: 1px solid black;
+                    border-collapse: collapse;
+                }
+                th, td {
+                    border: 1px solid black;
+                    padding: 5px;
+                    text-align: center;
+                }
             `}</style>
+
             <h2>Excel Data Quality Tool</h2>
             <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} />
             <div className="dq-row">
                 <label>Start Cell (e.g. A1):</label>
-                <input
-                    type="text"
-                    value={startCell}
-                    onChange={(e) => setStartCell(e.target.value)}
-                />
+                <input type="text" value={startCell} onChange={(e) => setStartCell(e.target.value)} />
             </div>
             <div className="dq-row">
                 <label>End Cell (e.g. D1):</label>
-                <input
-                    type="text"
-                    value={endCell}
-                    onChange={(e) => setEndCell(e.target.value)}
-                />
+                <input type="text" value={endCell} onChange={(e) => setEndCell(e.target.value)} />
             </div>
             <button onClick={handleGetColumns}>Get Columns</button>
+
             {error && <div className="dq-error">{error}</div>}
+
             {columns.length > 0 && (
-                <div>
+                <>
                     <div className="dq-columns">
                         <h3>Columns</h3>
                         <ul>
@@ -224,7 +201,7 @@ const DataQuality: React.FC = () => {
                                         <input
                                             type="checkbox"
                                             checked={columnChecks[col]}
-                                            onChange={() => handleColumnCheckChange(col)}
+                                            onChange={() => setColumnChecks(prev => ({ ...prev, [col]: !prev[col] }))}
                                         />
                                         {col}
                                     </label>
@@ -235,23 +212,50 @@ const DataQuality: React.FC = () => {
                     <div className="dq-checks">
                         <h3>Data Quality Checks</h3>
                         <ul>
-                            {['accuracy', 'completeness', 'reliability', 'relevance', 'timeliness'].map(
-                                (check) => (
-                                    <li key={check}>
-                                        <label>
-                                            <input
-                                                type="checkbox"
-                                                checked={dataQualityChecks[check as keyof typeof dataQualityChecks]}
-                                                onChange={() => handleDataQualityCheckChange(check)}
-                                            />
-                                            {check.charAt(0).toUpperCase() + check.slice(1)}
-                                        </label>
-                                    </li>
-                                )
-                            )}
+                            {Object.keys(dataQualityChecks).map((check) => (
+                                <li key={check}>
+                                    <label>
+                                        <input
+                                            type="checkbox"
+                                            checked={dataQualityChecks[check]}
+                                            onChange={() => setDataQualityChecks(prev => ({ ...prev, [check]: !prev[check] }))}
+                                        />
+                                        {check.charAt(0).toUpperCase() + check.slice(1)}
+                                    </label>
+                                </li>
+                            ))}
                         </ul>
                     </div>
                     <button onClick={handleRunChecks}>Run Data Quality Checks</button>
+                </>
+            )}
+
+            {results && (
+                <div>
+                    <h3>Results</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Column</th>
+                                {Object.keys(dataQualityChecks).map(check => (
+                                    <th key={check}>{check}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {Object.entries(results).map(([col, checks]) => (
+                                <tr key={col}>
+                                    <td>{col}</td>
+                                    {Object.keys(dataQualityChecks).map(check => (
+                                        <td key={check}>
+                                            {checks[check] === true ? '✅' :
+                                             checks[check] === false ? '❌' : ''}
+                                        </td>
+                                    ))}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             )}
         </div>
