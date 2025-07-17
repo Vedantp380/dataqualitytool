@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import * as XLSX from 'xlsx';
+import { useNavigate } from 'react-router-dom'; 
+
 
 const DataQuality: React.FC = () => {
     const [columns, setColumns] = useState<string[]>([]);
@@ -17,7 +19,7 @@ const DataQuality: React.FC = () => {
     const [fileData, setFileData] = useState<ArrayBuffer | string | null>(null);
     const [file, setFile] = useState<File | null>(null);
     const [results, setResults] = useState<{ [key: string]: { [key: string]: boolean } } | null>(null);
-
+    const navigate = useNavigate();
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         setError(null);
         const uploadedFile = e.target.files?.[0];
@@ -186,6 +188,7 @@ const DataQuality: React.FC = () => {
                 <label>End Cell (e.g. D1):</label>
                 <input type="text" value={endCell} onChange={(e) => setEndCell(e.target.value)} />
             </div>
+            <button onClick={() => navigate('/NRCI')}>Go to New Page</button>
             <button onClick={handleGetColumns}>Get Columns</button>
 
             {error && <div className="dq-error">{error}</div>}
